@@ -1,0 +1,41 @@
+# AlertTriage v2 — AI Model Definitions
+# Add new models here; reference them by key in client configs.
+
+default: claude-sonnet
+
+models:
+  # ── Anthropic Claude ──────────────────────────────────────────────────────
+  claude-sonnet:
+    provider: anthropic
+    model_name: claude-sonnet-4-6
+    max_tokens: 1024
+    temperature: 0.2
+    # Uses prompt caching — repeated system prompts are billed at 10% of input rate.
+
+  claude-opus:
+    provider: anthropic
+    model_name: claude-opus-4-7
+    max_tokens: 2048
+    temperature: 0.1
+    # Most capable; higher cost. Use for critical/escalation tiers.
+
+  claude-haiku:
+    provider: anthropic
+    model_name: claude-haiku-4-5-20251001
+    max_tokens: 512
+    temperature: 0.3
+    # Fastest and cheapest. Use for pre-filtering / high-volume low-severity.
+
+  # ── OpenAI GPT ────────────────────────────────────────────────────────────
+  gpt-4o:
+    provider: openai
+    model_name: gpt-4o
+    max_tokens: 1024
+    temperature: 0.2
+
+  gpt-4o-mini:
+    provider: openai
+    model_name: gpt-4o-mini
+    max_tokens: 512
+    temperature: 0.3
+    # Budget-friendly OpenAI option. Good for medium-volume clients.

@@ -1,0 +1,13 @@
+# AlertTriage v2 — Default Configuration
+# These values apply to all clients unless overridden in client_configs/<id>.yaml.
+
+log_level: INFO         # DEBUG | INFO | WARNING | ERROR
+json_logs: false        # true for production / log aggregation pipelines
+
+data_dir: data          # Per-client SQLite DBs, cost state
+reports_dir: reports    # Generated HTML/JSON reports
+
+# IMPORTANT: Change this before deploying. Used for PII pseudonymisation tokens.
+anonymize_salt: "change-me-in-production"
+
+default_model: claude-sonnet

@@ -1,0 +1,49 @@
+# AlertTriage v2 — Client Configuration Template
+# Copy to config/client_configs/<client_id>.yaml and fill in the blanks.
+# Run `python scripts/init_client.py` for an interactive wizard instead.
+
+client_id: acme-corp            # lowercase, no spaces, URL-safe
+display_name: "ACME Corporation"
+tier: standard                  # standard | premium | enterprise
+
+# ── AI Model ──────────────────────────────────────────────────────────────
+model: claude-sonnet            # Must match a key in config/models.yaml
+model_fallbacks:
+  - gpt-4o-mini                 # Tried in order if the primary model fails
+
+# ── SIEM Integration ──────────────────────────────────────────────────────
+siem:
+  type: splunk                  # splunk | elk | webhook | none
+
+  # Splunk settings (remove if type != splunk)
+  host: splunk.acme.internal
+  port: 8089
+  token: ""                     # Set via env var: ALERTTRIAGE_ACME_CORP_API_KEY
+  verify_ssl: true
+  earliest_time: "-15m"
+  search_query: "| inputlookup notable | where status=0"
+
+  # ELK settings (remove if type != elk)
+  # host: elastic.acme.internal
+  # port: 9200
+  # kibana_port: 5601
+  # api_key: ""
+  # index: .siem-signals-*
+
+# ── Output Webhook ────────────────────────────────────────────────────────
+webhook_url: null               # Optional: POST results to SOAR/ticketing
+webhook_secret: null            # HMAC-SHA256 signing secret
+
+# ── Privacy ───────────────────────────────────────────────────────────────
+anonymize: true                 # Always recommended for cloud AI models
+
+# ── Cost Limits ───────────────────────────────────────────────────────────
+cost_limits:
+  daily_usd: 10.00              # Hard stop at $10/day; null = no limit
+  monthly_usd: 200.00
+
+# ── Metadata ──────────────────────────────────────────────────────────────
+metadata:
+  contact: "soc@acme.com"
+  timezone: "America/New_York"
+  sla_minutes: 60

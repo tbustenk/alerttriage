@@ -1,0 +1,73 @@
+# ── Secrets & environment ─────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Python bytecode ───────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# ── Distribution / packaging ──────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
+*.egg
+MANIFEST
+
+# ── Virtual environments ──────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Runtime state (never commit client data) ──────────────────────────────
+data/
+reports/
+
+# ── Client-specific runtime artifacts ────────────────────────────────────
+clients/*/feedback.db
+clients/*/logs/
+clients/*/.cache/
+
+# ── Logs ──────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Tool caches ───────────────────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ── IDEs ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── macOS ─────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Windows ───────────────────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── Node (if any tooling is ever added) ───────────────────────────────────
+node_modules/
+npm-debug.log*
+
+# ── Jupyter ───────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Compiled type stubs ───────────────────────────────────────────────────
+*.pyi~
