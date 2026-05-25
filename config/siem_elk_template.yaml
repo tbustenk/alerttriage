@@ -1,0 +1,57 @@
+# AlertTriage — Elasticsearch / Kibana (ELK) connector template
+# ─────────────────────────────────────────────────────────────────────────────
+# Copy this file to  config/client_configs/<client_id>.yaml  and fill it in.
+#
+# IMPORTANT: Never put credentials in this file.  Choose one auth method:
+#
+#   Option A — API key (recommended)
+#     export ALERTTRIAGE_<CLIENT_ID_UPPER>_API_KEY=base64(id:key)
+#     Create in Kibana: Stack Management → Security → API Keys → Create
+#     Required privileges: monitor (cluster), read (index .siem-signals-*)
+#
+#   Option B — Basic auth
+#     Set  username: elastic  (or a dedicated service account) in this file.
+#     export ALERTTRIAGE_<CLIENT_ID_UPPER>_ES_PASSWORD=your-password
+# ─────────────────────────────────────────────────────────────────────────────
+
+client_id: replace-me          # lowercase slug, e.g. acme-corp
+display_name: Replace Me
+
+# ── SIEM section ─────────────────────────────────────────────────────────────
+siem:
+  type: elk
+
+  # Connection
+  host: elastic.yourcompany.internal   # ES host (shared with Kibana by default)
+  port: 9200                           # Elasticsearch REST port
+  kibana_port: 5601                    # Kibana API port (for writing signal status)
+  verify_ssl: true                     # set false only for self-signed certs in dev
+
+  # Auth — choose one option, set the secret via env var (see header above):
+  # Option A (API key) — nothing to set here; just export the env var.
+  # Option B (basic):
+  # username: elastic
+
+  # Alert index and time range
+  index: ".siem-signals-*"            # Kibana Detection Engine signals index
+  time_range: "now-15m"               # Elasticsearch date-math range expression
+
+  # Timeouts
+  timeout_sec: 30
+
+  # Retry policy (optional — defaults shown)
+  retry_max_attempts: 3
+  retry_initial_delay_sec: 0.5
+  retry_max_delay_sec: 30.0
+  retry_factor: 2.0
+  retry_jitter: true
+
+# ── Optional cost limits ──────────────────────────────────────────────────────
+cost_limits:
+  daily_usd: 10.00
+  monthly_usd: 200.00
+
+# ── Model ─────────────────────────────────────────────────────────────────────
+model: claude-sonnet-4-6
+model_fallbacks:
+  - claude-haiku-4-5-20251001

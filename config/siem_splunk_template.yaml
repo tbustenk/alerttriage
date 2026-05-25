@@ -1,0 +1,50 @@
+# AlertTriage — Splunk Enterprise Security connector template
+# ─────────────────────────────────────────────────────────────────────────────
+# Copy this file to  config/client_configs/<client_id>.yaml  and fill it in.
+# The SIEM section is merged with the rest of your client config.
+#
+# IMPORTANT: Never put tokens in this file.  Set the environment variable:
+#   export ALERTTRIAGE_<CLIENT_ID_UPPER>_API_KEY=your-bearer-token
+#
+# Obtain a token in Splunk:  Settings → Users → <username> → Edit → New token
+# ─────────────────────────────────────────────────────────────────────────────
+
+client_id: replace-me          # lowercase slug, e.g. acme-corp
+display_name: Replace Me
+
+# ── SIEM section ─────────────────────────────────────────────────────────────
+siem:
+  type: splunk
+
+  # Connection
+  host: splunk.yourcompany.internal   # hostname or IP of the Splunk REST API
+  port: 8089                          # default Splunk REST port
+  verify_ssl: true                    # set false only for self-signed certs in dev
+
+  # Authentication — set via env var, not here:
+  # export ALERTTRIAGE_REPLACE_ME_API_KEY=eyJ...
+
+  # Alert query — customise the SPL to match your environment
+  search_query: "| inputlookup notable | where status=0"
+  index: notable                      # Splunk index used by fieldsummary
+  earliest_time: "-15m"               # how far back to look each run
+
+  # Timeouts
+  timeout_sec: 30
+
+  # Retry policy (optional — defaults shown)
+  retry_max_attempts: 3
+  retry_initial_delay_sec: 0.5
+  retry_max_delay_sec: 30.0
+  retry_factor: 2.0
+  retry_jitter: true
+
+# ── Optional cost limits ──────────────────────────────────────────────────────
+cost_limits:
+  daily_usd: 10.00
+  monthly_usd: 200.00
+
+# ── Model ─────────────────────────────────────────────────────────────────────
+model: claude-sonnet-4-6
+model_fallbacks:
+  - claude-haiku-4-5-20251001

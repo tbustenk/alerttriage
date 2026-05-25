@@ -178,3 +178,36 @@ def _extract_retry_after(exc: BaseException) -> float | None:
         return float(raw)
     except (TypeError, ValueError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# Concrete implementation of RetryConfigLike
+# ---------------------------------------------------------------------------
+
+import dataclasses
+
+
+@dataclasses.dataclass
+class SimpleRetryConfig:
+    """Standalone RetryConfigLike for use outside the full config module.
+
+    Satisfies the :class:`RetryConfigLike` Protocol so it can be passed
+    directly to :func:`with_retry`.
+    """
+
+    max_attempts: int = 3
+    initial_delay_sec: float = 0.5
+    max_delay_sec: float = 30.0
+    factor: float = 2.0
+    jitter: bool = True
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "SimpleRetryConfig":
+        """Build from a config dict, ignoring unknown keys."""
+        return cls(
+            max_attempts=int(d.get("retry_max_attempts", cls.max_attempts)),
+            initial_delay_sec=float(d.get("retry_initial_delay_sec", cls.initial_delay_sec)),
+            max_delay_sec=float(d.get("retry_max_delay_sec", cls.max_delay_sec)),
+            factor=float(d.get("retry_factor", cls.factor)),
+            jitter=bool(d.get("retry_jitter", cls.jitter)),
+        )
