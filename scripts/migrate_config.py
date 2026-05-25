@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-CLIENT_DIR = Path("alerttriage/config/client_configs")
+CLIENT_DIR = Path(__file__).resolve().parent.parent / "config" / "client_configs"
 
 
 def _backup(path: Path) -> Path:

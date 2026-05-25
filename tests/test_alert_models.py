@@ -8,14 +8,14 @@ from alerttriage.src.core.result_models import AnalysisResult, Verdict
 
 
 def make_alert(**kwargs) -> Alert:
-    defaults = dict(
-        client_id="test-client",
-        source=AlertSource.MANUAL,
-        rule_name="Test Rule",
-        severity=AlertSeverity.HIGH,
-        title="Suspicious login",
-        description="Multiple failed logins followed by success.",
-    )
+    defaults = {
+        "client_id": "test-client",
+        "source": AlertSource.MANUAL,
+        "rule_name": "Test Rule",
+        "severity": AlertSeverity.HIGH,
+        "title": "Suspicious login",
+        "description": "Multiple failed logins followed by success.",
+    }
     return Alert(**{**defaults, **kwargs})
 
 
@@ -57,7 +57,11 @@ class TestAnalysisResult:
     def test_confidence_clamped(self):
         with pytest.raises(ValidationError):
             AnalysisResult(
-                alert_id="a1", client_id="c1", model_id="m",
-                verdict=Verdict.UNKNOWN, confidence=1.5,
-                summary="", reasoning="",
+                alert_id="a1",
+                client_id="c1",
+                model_id="m",
+                verdict=Verdict.UNKNOWN,
+                confidence=1.5,
+                summary="",
+                reasoning="",
             )

@@ -1,5 +1,6 @@
 # AlertTriage v2 — Default Configuration
-# These values apply to all clients unless overridden in client_configs/<id>.yaml.
+# These values apply to all clients unless overridden in client_configs/<id>.yaml
+# or by environment variables (ALERTTRIAGE_*).
 
 log_level: INFO         # DEBUG | INFO | WARNING | ERROR
 json_logs: false        # true for production / log aggregation pipelines
@@ -11,3 +12,33 @@ reports_dir: reports    # Generated HTML/JSON reports
 anonymize_salt: "change-me-in-production"
 
 default_model: claude-sonnet
+
+# ── Concurrency ──────────────────────────────────────────────────────────
+# Bounds the number of in-flight AI calls per analyze_batch invocation.
+concurrency:
+  max_in_flight: 5
+
+# ── Retry / Backoff ──────────────────────────────────────────────────────
+# Applies to every backend API call (Claude, GPT, SIEM HTTP) via the
+# alerttriage.src.retry helper. Backoff = initial * (factor ** attempt),
+# capped at max_delay, with optional jitter.
+retry:
+  max_attempts: 4
+  initial_delay_sec: 0.5
+  max_delay_sec: 30.0
+  factor: 2.0
+  jitter: true
+
+# ── Learning Engine ──────────────────────────────────────────────────────
+# Thresholds the prompt-hint generator uses to decide which rules deserve
+# guidance. Tune per-client by overriding this whole block in their YAML.
+learning:
+  fp_rate_threshold: 0.50    # Rule must have FP rate >= this to earn a hint
+  min_sample_size: 5         # Rule must have at least this many feedback rows
+  max_hints: 10              # Cap hints injected into the system prompt
+  cache_ttl_sec: 300         # Cache compiled hints to avoid hot-path SQLite scans
+
+# ── Feedback ─────────────────────────────────────────────────────────────
+# Batch size used by FeedbackStore.record_many for bulk ingestion.
+feedback:
+  batch_size: 200

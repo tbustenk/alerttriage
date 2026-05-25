@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class Verdict(str, Enum):
+class Verdict(StrEnum):
+    """All triage verdicts the AI may return."""
+
     TRUE_POSITIVE = "true_positive"
     FALSE_POSITIVE = "false_positive"
     NEEDS_ESCALATION = "needs_escalation"

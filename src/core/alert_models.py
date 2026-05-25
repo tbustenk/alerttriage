@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class AlertSeverity(str, Enum):
+class AlertSeverity(StrEnum):
+    """Severity levels recognised across all SIEM sources."""
+
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -18,7 +20,9 @@ class AlertSeverity(str, Enum):
     INFO = "info"
 
 
-class AlertSource(str, Enum):
+class AlertSource(StrEnum):
+    """Where an alert originated."""
+
     SPLUNK = "splunk"
     ELK = "elk"
     WEBHOOK = "webhook"
@@ -69,7 +73,7 @@ class FeedbackRecord(BaseModel):
     analysis_id: str
     client_id: str
     analyst_id: str
-    analyst_verdict: str          # true_positive / false_positive / escalated / closed
+    analyst_verdict: str  # true_positive / false_positive / escalated / closed
     analyst_notes: str = ""
     ai_verdict_was_correct: bool
     timestamp: datetime = Field(default_factory=datetime.utcnow)

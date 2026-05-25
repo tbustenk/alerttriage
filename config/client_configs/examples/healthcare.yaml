@@ -1,0 +1,45 @@
+# Example: healthcare client
+#
+# Profile:
+#   - PHI everywhere — anonymisation must be on, with a unique salt.
+#   - Smaller in-house SOC; lean on the AI to triage so analysts focus on
+#     escalations.
+#   - Predictable alert volume from a managed ELK deployment.
+#
+# Copy this file to <client_id>.yaml in this directory before use.
+
+client_id: example-health
+display_name: "Example Hospital Group"
+tier: premium
+
+model: claude-sonnet
+model_fallbacks:
+  - claude-haiku
+  - gpt-4o-mini
+
+siem:
+  type: elk
+  host: elastic.example-health.internal
+  port: 9200
+  kibana_port: 5601
+  # api_key: set ALERTTRIAGE_EXAMPLE_HEALTH_API_KEY
+  verify_ssl: true
+  index: ".siem-signals-*"
+
+cost_limits:
+  daily_usd: 50.00
+  monthly_usd: 1200.00
+
+anonymize: true                 # never disable for healthcare data
+
+learning:
+  fp_rate_threshold: 0.50
+  min_sample_size: 5
+  max_hints: 10
+  cache_ttl_sec: 300
+
+metadata:
+  contact: "infosec@example-health.org"
+  timezone: "America/Chicago"
+  sla_minutes: 30
+  compliance: ["HIPAA", "HITRUST"]

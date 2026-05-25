@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Interactive wizard for onboarding a new AlertTriage client.
+"""Interactive wizard for onboarding a new AlertTriage client.
 
 Usage:
     python scripts/init_client.py
@@ -13,12 +12,14 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 import yaml
 
-CONFIG_DIR = Path(__file__).parent.parent / "alerttriage" / "config"
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_DIR = _REPO_ROOT / "config"
 CLIENT_DIR = CONFIG_DIR / "client_configs"
-DATA_DIR = Path("data")
+DATA_DIR = _REPO_ROOT / "data"
 
 SIEM_TYPES = ["splunk", "elk", "webhook", "none"]
 MODELS = ["claude-sonnet", "claude-opus", "claude-haiku", "gpt-4o", "gpt-4o-mini"]
@@ -44,10 +45,12 @@ def _choice(label: str, options: list[str], default: str) -> str:
 
 
 def _slug(s: str) -> str:
+    """Lowercase, hyphen-only client identifier."""
     return re.sub(r"[^a-z0-9\-]", "-", s.lower()).strip("-")
 
 
-def wizard() -> dict:
+def wizard() -> dict[str, Any]:
+    """Walk the operator through an interactive client setup."""
     print("\n=== AlertTriage v2 — New Client Setup ===\n")
 
     display_name = _prompt("Client display name", required=True)
@@ -60,7 +63,7 @@ def wizard() -> dict:
 
     print()
     siem_type = _choice("SIEM type", SIEM_TYPES, default="splunk")
-    siem: dict = {"type": siem_type}
+    siem: dict[str, Any] = {"type": siem_type}
 
     if siem_type == "splunk":
         siem["host"] = _prompt("Splunk host", required=True)
@@ -79,7 +82,7 @@ def wizard() -> dict:
     daily_limit = _prompt("Daily cost limit USD (blank = no limit)", default="")
     monthly_limit = _prompt("Monthly cost limit USD (blank = no limit)", default="")
 
-    config = {
+    return {
         "client_id": client_id,
         "display_name": display_name,
         "tier": tier,
@@ -96,10 +99,10 @@ def wizard() -> dict:
             "timezone": _prompt("Timezone", default="UTC"),
         },
     }
-    return config
 
 
-def write_config(config: dict) -> Path:
+def write_config(config: dict[str, Any]) -> Path:
+    """Persist a client YAML and create the data directory. Returns the YAML path."""
     CLIENT_DIR.mkdir(parents=True, exist_ok=True)
     out = CLIENT_DIR / f"{config['client_id']}.yaml"
     if out.exists():
@@ -111,9 +114,7 @@ def write_config(config: dict) -> Path:
     with open(out, "w", encoding="utf-8") as fh:
         yaml.dump(config, fh, allow_unicode=True, sort_keys=False)
 
-    data_path = DATA_DIR / config["client_id"]
-    data_path.mkdir(parents=True, exist_ok=True)
-
+    (DATA_DIR / config["client_id"]).mkdir(parents=True, exist_ok=True)
     return out
 
 
@@ -130,8 +131,8 @@ def main() -> None:
     out = write_config(config)
 
     print(f"\n  Config written to: {out}")
-    print(f"  Data directory:    data/{config['client_id']}/")
-    print(f"\n  Run your first scan:")
+    print(f"  Data directory:    {DATA_DIR / config['client_id']}/")
+    print("\n  Run your first scan:")
     print(f"    python scripts/run_client.py --client-id {config['client_id']}\n")
 
 

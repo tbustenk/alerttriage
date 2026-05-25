@@ -1,19 +1,19 @@
 """Package setup for AlertTriage v2."""
 
-from setuptools import setup, find_packages
+from pathlib import Path
 
-with open("requirements.txt") as fh:
-    install_requires = [
-        line.strip()
-        for line in fh
-        if line.strip() and not line.startswith("#")
-    ]
+from setuptools import find_packages, setup
+
+with open("requirements.txt", encoding="utf-8") as fh:
+    install_requires = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
+
+long_description = Path("README.md").read_text(encoding="utf-8")
 
 setup(
     name="alerttriage",
     version="2.0.0",
     description="Production-grade AI alert analysis platform",
-    long_description=open("README.md", encoding="utf-8").read(),
+    long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/tbustenk/alerttriage",
     packages=find_packages(exclude=["tests*", "scripts*"]),

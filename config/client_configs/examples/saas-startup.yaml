@@ -1,0 +1,42 @@
+# Example: SaaS / tech startup
+#
+# Profile:
+#   - High alert volume from auto-instrumented services.
+#   - Optimise for cost-per-alert; analysts trust the AI to handle
+#     low-severity noise.
+#   - SOAR (e.g. Tines) wants a webhook receiver, not direct SIEM writes.
+#
+# Copy this file to <client_id>.yaml in this directory before use.
+
+client_id: example-saas
+display_name: "Example SaaS Co."
+tier: standard
+
+model: claude-haiku             # cheap + fast for high-volume triage
+model_fallbacks:
+  - gpt-4o-mini
+  - claude-sonnet               # only used when both cheap models fail
+
+siem:
+  type: webhook
+  url: https://soar.example-saas.io/triage/inbound
+  # secret: set ALERTTRIAGE_EXAMPLE_SAAS_API_KEY
+  timeout_sec: 5
+  retry_count: 3
+
+cost_limits:
+  daily_usd: 25.00
+  monthly_usd: 500.00
+
+anonymize: true
+
+learning:
+  fp_rate_threshold: 0.60       # tolerate more FPs before nagging the model
+  min_sample_size: 20           # high volume — wait for more signal
+  max_hints: 8
+  cache_ttl_sec: 600
+
+metadata:
+  contact: "security@example-saas.io"
+  timezone: "UTC"
+  sla_minutes: 60

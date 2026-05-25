@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from alerttriage.src.reporting.metrics import ClientMetrics
 from alerttriage.src.logger import get_logger
+from alerttriage.src.reporting.metrics import ClientMetrics
 
 log = get_logger(__name__)
 
@@ -20,14 +20,26 @@ _HTML_TEMPLATE = """\
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>AlertTriage Report – {client_id}</title>
   <style>
-    body {{ font-family: system-ui, sans-serif; margin: 2rem; background: #f8fafc; color: #1e293b; }}
+    body {{
+      font-family: system-ui, sans-serif;
+      margin: 2rem; background: #f8fafc; color: #1e293b;
+    }}
     h1   {{ color: #0f172a; }}
-    .card {{ background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem;
-             box-shadow: 0 1px 3px rgba(0,0,0,.1); }}
+    .card {{
+      background: white; border-radius: 8px;
+      padding: 1.5rem; margin-bottom: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,.1);
+    }}
     table {{ width: 100%; border-collapse: collapse; }}
-    th, td {{ text-align: left; padding: .5rem 1rem; border-bottom: 1px solid #e2e8f0; }}
+    th, td {{
+      text-align: left; padding: .5rem 1rem;
+      border-bottom: 1px solid #e2e8f0;
+    }}
     th {{ background: #f1f5f9; }}
-    .badge {{ display: inline-block; padding: .2rem .7rem; border-radius: 9999px; font-size: .8rem; }}
+    .badge {{
+      display: inline-block; padding: .2rem .7rem;
+      border-radius: 9999px; font-size: .8rem;
+    }}
     .tp {{ background: #dcfce7; color: #166534; }}
     .fp {{ background: #fee2e2; color: #991b1b; }}
   </style>

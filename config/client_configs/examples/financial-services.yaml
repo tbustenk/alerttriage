@@ -1,0 +1,45 @@
+# Example: financial-services client
+#
+# Profile:
+#   - High blast radius for missed true-positives → favour the most
+#     capable model and aggressive escalation.
+#   - SOC has analysts on a 24×7 rotation, so accuracy beats latency.
+#   - Strict spend ceilings driven by procurement, not SOC.
+#
+# Copy this file to <client_id>.yaml in this directory before use.
+
+client_id: example-fin
+display_name: "Example Financial Services Inc."
+tier: enterprise
+
+model: claude-opus              # most capable; cost is OK for this tier
+model_fallbacks:
+  - claude-sonnet               # downshift if Opus is unavailable
+  - gpt-4o                      # last resort
+
+siem:
+  type: splunk
+  host: splunk.example-fin.internal
+  port: 8089
+  # token: set ALERTTRIAGE_EXAMPLE_FIN_API_KEY
+  verify_ssl: true
+  earliest_time: "-30m"
+  search_query: "| inputlookup notable | where status=0 AND urgency!=informational"
+
+cost_limits:
+  daily_usd: 200.00
+  monthly_usd: 4000.00
+
+anonymize: true
+
+learning:
+  fp_rate_threshold: 0.40       # tighter than default — be conservative
+  min_sample_size: 10           # require more evidence before hinting
+  max_hints: 15
+  cache_ttl_sec: 300
+
+metadata:
+  contact: "soc@example-fin.com"
+  timezone: "America/New_York"
+  sla_minutes: 15               # 15-minute MTTA for critical
+  compliance: ["PCI-DSS", "SOX"]

@@ -1,4 +1,9 @@
-"""PII anonymization layer — strips identifying data before AI submission."""
+"""PII anonymisation layer — strips identifying data before AI submission.
+
+Pseudonyms are stable within a salt so correlations between alerts survive
+(``10.0.0.5`` always tokenises to the same ``<IP:abcd1234>``). The reverse
+map lives only in memory; it is never persisted and never sent to the AI.
+"""
 
 from __future__ import annotations
 
@@ -13,57 +18,50 @@ from alerttriage.src.logger import get_logger
 log = get_logger(__name__)
 
 # Patterns that should never reach the AI model.
-_PATTERNS = {
+_PATTERNS: dict[str, re.Pattern[str]] = {
     "credit_card": re.compile(r"\b(?:\d[ -]?){13,16}\b"),
-    "ssn":         re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
-    "email":       re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"),
-    "api_key":     re.compile(r"\b(?:sk|pk|api)[-_][A-Za-z0-9]{20,}\b"),
+    "ssn": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
+    "email": re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"),
+    "api_key": re.compile(r"\b(?:sk|pk|api)[-_][A-Za-z0-9]{20,}\b"),
 }
 
 
 class Anonymizer:
-    """
-    Replaces PII in alert fields with stable pseudonyms so that:
-      - The AI cannot see raw sensitive values.
-      - Correlations between alerts (same IP → same token) are preserved.
-      - Results can be de-anonymized for display if needed.
-    """
+    """Replaces PII in alert fields with stable, deterministic pseudonyms."""
 
     def __init__(self, config: Any) -> None:
+        """Read ``anonymize_salt`` from config (falls back to a fixed default)."""
         self._salt: str = getattr(config, "anonymize_salt", "alerttriage-default-salt")
 
     def anonymize(self, alert: Alert) -> tuple[Alert, dict[str, str]]:
-        """
-        Returns (anonymized_alert, reverse_map).
+        """Return an anonymised copy of ``alert`` plus the in-memory reverse map.
 
-        reverse_map: token → original_value (kept in memory only; never persisted).
+        The reverse map (``token → original_value``) lets callers de-anonymise
+        results for display. It must never be persisted or sent to the AI.
         """
         reverse_map: dict[str, str] = {}
-
-        def _redact(value: str) -> str:
-            token = f"<REDACTED:{self._token(value)}>"
-            reverse_map[token] = value
-            return token
 
         def _anonymize_ip(ip: str) -> str:
             try:
                 addr = ipaddress.ip_address(ip)
-                if isinstance(addr, ipaddress.IPv4Address):
-                    parts = ip.split(".")
-                    token = f"<IP:{self._token(ip)}>"
-                    reverse_map[token] = ip
-                    return token
             except ValueError:
-                pass
-            return ip
+                return ip
+            if not isinstance(addr, ipaddress.IPv4Address | ipaddress.IPv6Address):
+                return ip
+            token = f"<IP:{self._token(ip)}>"
+            reverse_map[token] = ip
+            return token
 
         def _scrub(text: str) -> str:
             for name, pattern in _PATTERNS.items():
-                def _replace(m: re.Match) -> str:
+                # Bind ``name`` via default arg so the closure captures
+                # the value at each iteration rather than the loop variable.
+                def _replace(m: re.Match, _name: str = name) -> str:
                     original = m.group()
-                    t = f"<{name.upper()}:{self._token(original)}>"
-                    reverse_map[t] = original
-                    return t
+                    token = f"<{_name.upper()}:{self._token(original)}>"
+                    reverse_map[token] = original
+                    return token
+
                 text = pattern.sub(_replace, text)
             return text
 
@@ -101,4 +99,5 @@ class Anonymizer:
         return anon_alert, reverse_map
 
     def _token(self, value: str) -> str:
+        """Return the first 8 hex chars of ``sha256(salt + value)``."""
         return hashlib.sha256(f"{self._salt}:{value}".encode()).hexdigest()[:8]
