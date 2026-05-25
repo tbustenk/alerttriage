@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}Feedback{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Feedback</h1>
+  <p class="subtitle">Record analyst verdicts and track feedback impact</p>
+</div>
+
+<div class="two-col">
+
+  <!-- Quick feedback form -->
+  <div>
+    <div class="card">
+      <div class="card-title">Record Feedback</div>
+      <div id="alert-container"></div>
+
+      <form id="feedback-form" onsubmit="submitFeedback(event)">
+        <div class="form-group">
+          <label class="form-label" for="f-rule">Rule / Alert Type <span style="color:var(--red)">*</span></label>
+          <input list="rules-list" id="f-rule" class="form-control" placeholder="e.g. brute_force_ssh" required>
+          <datalist id="rules-list"></datalist>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="f-verdict">Analyst Verdict <span style="color:var(--red)">*</span></label>
+          <select id="f-verdict" class="form-control" required>
+            <option value="">— Select verdict —</option>
+            <option value="true_positive">True Positive</option>
+            <option value="false_positive">False Positive</option>
+            <option value="escalated">Escalated</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="f-alert-id">Alert ID <span style="color:var(--text-muted)">(optional)</span></label>
+            <input id="f-alert-id" class="form-control" placeholder="auto-generated">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="f-analyst">Your Name <span style="color:var(--text-muted)">(optional)</span></label>
+            <input id="f-analyst" class="form-control" placeholder="analyst name">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-check">
+            <input type="checkbox" id="f-correct">
+            AI verdict was correct
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="f-notes">Notes</label>
+          <textarea id="f-notes" class="form-control" rows="3" placeholder="Additional context or reasoning…"></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width:100%">Record Feedback</button>
+      </form>
+    </div>
+
+    <!-- Impact card -->
+    <div class="card" style="margin-top:1rem">
+      <div class="card-title">Feedback Impact</div>
+      <div id="impact-container">
+        <div class="loading"><div class="spinner"></div>Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent feedback table -->
+  <div class="card">
+    <div class="card-title">Recent Feedback</div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Rule</th>
+            <th>Verdict</th>
+            <th>AI Correct</th>
+            <th>Analyst</th>
+            <th>Notes</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody id="feedback-body">
+          <tr><td colspan="6" style="padding:0">
+            <div class="loading"><div class="spinner"></div>Loading…</div>
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination" id="fb-pagination"></div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let fbPage = 1;
+const PER_PAGE = 20;
+
+async function loadRules() {
+  const rules = await fetch('/api/rules').then(r => r.json());
+  const dl = document.getElementById('rules-list');
+  dl.innerHTML = rules.map(r => `<option value="${esc(r)}">`).join('');
+}
+
+async function loadFeedback() {
+  const body = document.getElementById('feedback-body');
+  body.innerHTML = `<tr><td colspan="6" style="padding:0">${loadingHTML()}</td></tr>`;
+
+  const d = await fetch(`/api/feedback?page=${fbPage}&per_page=${PER_PAGE}`).then(r => r.json());
+
+  if (!d.feedback.length) {
+    body.innerHTML = `<tr><td colspan="6" style="padding:0">${emptyHTML('📋', 'No feedback recorded yet.')}</td></tr>`;
+    document.getElementById('fb-pagination').innerHTML = '';
+    return;
+  }
+
+  body.innerHTML = d.feedback.map(f => `
+    <tr>
+      <td>${esc(f.rule_name)}</td>
+      <td>${verdictBadge(f.analyst_verdict)}</td>
+      <td>${correctBadge(f.ai_correct)}</td>
+      <td style="font-size:0.8rem;color:var(--text-muted)">${esc(f.analyst_id || '—')}</td>
+      <td class="td-truncate" title="${esc(f.analyst_notes || '')}">${esc(f.analyst_notes || '—')}</td>
+      <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(f.timestamp)}</td>
+    </tr>
+  `).join('');
+
+  renderFbPagination(d.total, d.page);
+  updateTimestamp();
+}
+
+function renderFbPagination(total, page) {
+  const pages = Math.ceil(total / PER_PAGE);
+  if (pages <= 1) { document.getElementById('fb-pagination').innerHTML = ''; return; }
+
+  let html = `<button class="page-btn" onclick="goFbPage(${page-1})" ${page<=1?'disabled':''}>‹</button>`;
+  for (let i = Math.max(1,page-2); i <= Math.min(pages,page+2); i++) {
+    html += `<button class="page-btn${i===page?' active':''}" onclick="goFbPage(${i})">${i}</button>`;
+  }
+  html += `<button class="page-btn" onclick="goFbPage(${page+1})" ${page>=pages?'disabled':''}>›</button>`;
+  document.getElementById('fb-pagination').innerHTML = html;
+}
+
+function goFbPage(p) { fbPage = p; loadFeedback(); }
+
+async function loadImpact() {
+  const d = await fetch('/api/feedback/impact').then(r => r.json());
+  const c = document.getElementById('impact-container');
+
+  if (d.message && !d.early_accuracy) {
+    c.innerHTML = `<p class="impact-msg" style="padding:0.5rem 0">${esc(d.message)}</p>`;
+    return;
+  }
+
+  const deltaClass = d.delta > 0 ? 'positive' : d.delta < 0 ? 'negative' : 'neutral';
+  const deltaSign  = d.delta > 0 ? '+' : '';
+
+  c.innerHTML = `
+    <div class="impact-row">
+      <div class="impact-val">
+        <div class="impact-num">${d.early_accuracy}%</div>
+        <div class="impact-lbl">Early accuracy</div>
+      </div>
+      <div class="impact-arrow">→</div>
+      <div class="impact-val">
+        <div class="impact-num">${d.recent_accuracy}%</div>
+        <div class="impact-lbl">Recent accuracy</div>
+      </div>
+      <div class="impact-val">
+        <div class="impact-delta ${deltaClass}">${deltaSign}${d.delta}%</div>
+        <div class="impact-lbl">Change</div>
+      </div>
+    </div>
+    <div class="impact-msg">${esc(d.message || '')}</div>
+    <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.5rem">${d.total_records} total feedback records</div>
+  `;
+}
+
+async function submitFeedback(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const body = {
+    rule_name:       document.getElementById('f-rule').value.trim(),
+    analyst_verdict: document.getElementById('f-verdict').value,
+    alert_id:        document.getElementById('f-alert-id').value.trim() || null,
+    analyst_id:      document.getElementById('f-analyst').value.trim() || null,
+    ai_correct:      document.getElementById('f-correct').checked,
+    notes:           document.getElementById('f-notes').value.trim(),
+  };
+
+  try {
+    const r = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+
+    if (r.ok) {
+      showAlert('Feedback recorded successfully.', 'success');
+      e.target.reset();
+      loadFeedback();
+      loadImpact();
+    } else {
+      showAlert(d.error || 'Failed to record feedback.', 'error');
+    }
+  } catch {
+    showAlert('Network error. Please try again.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Record Feedback';
+  }
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function init() {
+  await Promise.all([loadRules(), loadFeedback(), loadImpact()]);
+}
+
+setupAutoRefresh(loadFeedback);
+init();
+</script>
+{% endblock %}

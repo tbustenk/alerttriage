@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Learning{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Learning</h1>
+  <p class="subtitle">What the system has learned from analyst feedback</p>
+</div>
+
+<div id="alert-container"></div>
+
+<!-- AI Hints -->
+<div class="section">
+  <div class="section-header">
+    <h2>AI Prompt Hints</h2>
+    <span id="accuracy-badge" style="font-size:0.8rem;color:var(--text-muted)"></span>
+  </div>
+  <div id="hints-box" class="hints-box">Loading…</div>
+</div>
+
+<!-- Per-rule insights -->
+<div class="section">
+  <div class="section-header">
+    <h2>Per-Alert-Type Accuracy</h2>
+  </div>
+  <div id="insights-grid" class="insights-grid">
+    <div class="loading"><div class="spinner"></div>Loading…</div>
+  </div>
+</div>
+
+<!-- Weak rules -->
+<div class="section">
+  <div class="section-header">
+    <h2>Weak Alert Types</h2>
+    <span style="font-size:0.8rem;color:var(--text-muted)">Where the system struggles most</span>
+  </div>
+  <div class="card">
+    <ul class="weak-list" id="weak-list">
+      <li class="loading"><div class="spinner"></div>Loading…</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Environment context -->
+<div class="section">
+  <div class="section-header">
+    <h2>Environment Context</h2>
+    <span style="font-size:0.8rem;color:var(--text-muted)">Infrastructure patterns stored for AI context</span>
+  </div>
+  <div class="card">
+    <div id="env-context">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadLearning() {
+  const d = await fetch('/api/learning').then(r => r.json());
+
+  // Accuracy badge
+  const badge = document.getElementById('accuracy-badge');
+  badge.textContent = `Overall accuracy: ${d.accuracy}%`;
+  badge.style.color = d.accuracy >= 80 ? 'var(--green)' : d.accuracy >= 60 ? 'var(--yellow)' : 'var(--red)';
+
+  // Hints
+  document.getElementById('hints-box').textContent = d.hints || 'No hints generated yet.';
+
+  // Insights grid
+  const grid = document.getElementById('insights-grid');
+  if (!d.insights.length) {
+    grid.innerHTML = emptyHTML('📈', 'No rule data yet. Analyze alerts and record feedback to see per-rule accuracy.');
+  } else {
+    grid.innerHTML = d.insights.map(ins => {
+      const accuracy = ins.total > 0 ? Math.round((ins.correct / ins.total) * 100) : 0;
+      const fpPct    = ins.false_positive_rate;
+      const color    = fpPct > 50 ? 'var(--red)' : fpPct > 25 ? 'var(--yellow)' : 'var(--green)';
+      return `
+        <div class="insight-card">
+          <div class="insight-rule">${esc(ins.rule_name)}</div>
+          <div class="insight-stats">
+            <span>${ins.total} alerts</span>
+            <span>${ins.correct} correct</span>
+          </div>
+          <div class="fp-bar">
+            <div class="fp-bar-fill" style="width:${fpPct}%;background:${color}"></div>
+          </div>
+          <div class="fp-label">
+            FP rate: <span style="color:${color}">${fpPct}%</span>
+            &nbsp;|&nbsp; Accuracy: <span style="color:var(--green)">${accuracy}%</span>
+          </div>
+          ${ins.misclassifications.length ? `
+            <div style="margin-top:0.75rem;font-size:0.75rem;color:var(--text-muted)">
+              Recent misses: ${ins.misclassifications.map(m => `<code>${esc(m)}</code>`).join(', ')}
+            </div>` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Weak rules
+  const weakList = document.getElementById('weak-list');
+  if (!d.worst_rules.length) {
+    weakList.innerHTML = `<li style="padding:1rem 0;color:var(--text-muted);font-size:0.875rem">No data yet.</li>`;
+  } else {
+    // Pull FP rates from insights for display
+    const rateMap = {};
+    d.insights.forEach(i => { rateMap[i.rule_name] = i.false_positive_rate; });
+
+    weakList.innerHTML = d.worst_rules.map((rule, idx) => `
+      <li class="weak-item">
+        <div class="weak-rank">${idx + 1}</div>
+        <div class="weak-name">${esc(rule)}</div>
+        <div class="weak-rate">${rateMap[rule] !== undefined ? rateMap[rule] + '% FP' : 'High FP'}</div>
+      </li>
+    `).join('');
+  }
+
+  updateTimestamp();
+}
+
+async function loadContext() {
+  const d = await fetch('/api/admin/context').then(r => r.json());
+  const container = document.getElementById('env-context');
+
+  if (!d.context.length) {
+    container.innerHTML = `<p style="color:var(--text-muted);font-size:0.875rem;padding:0.5rem 0">
+      No environment context stored yet. Add context in the <a href="/admin" style="color:var(--blue)">Admin</a> page.
+    </p>`;
+    return;
+  }
+
+  container.innerHTML = d.context.map(c => `
+    <div class="context-item">
+      <div>
+        <div class="context-key">${esc(c.key)}</div>
+        <div class="context-val">${esc(c.value)}</div>
+        ${c.notes ? `<div class="context-notes">${esc(c.notes)}</div>` : ''}
+      </div>
+      <div style="font-size:0.75rem;color:var(--text-muted)">${fmtDateShort(c.created)}</div>
+    </div>
+  `).join('');
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function init() {
+  await Promise.all([loadLearning(), loadContext()]);
+}
+
+setupAutoRefresh(init);
+init();
+</script>
+{% endblock %}

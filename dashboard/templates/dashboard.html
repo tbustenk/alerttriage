@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Dashboard</h1>
+  <p class="subtitle">Alert analysis overview for <strong>{{ client_id }}</strong></p>
+</div>
+
+<!-- Quick stats -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Alerts Today</div>
+    <div class="stat-value" id="stat-today">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">False Positives Caught</div>
+    <div class="stat-value fp-value" id="stat-fp">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Time Saved</div>
+    <div class="stat-value" id="stat-time">—</div>
+    <div class="stat-sub">hours (est. @ 15 min/FP)</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">AI Accuracy</div>
+    <div class="stat-value acc-value" id="stat-accuracy">—</div>
+    <div class="stat-sub">overall</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Analysed</div>
+    <div class="stat-value" id="stat-total">—</div>
+    <div class="stat-sub">with feedback</div>
+  </div>
+</div>
+
+<!-- Charts row -->
+<div class="charts-row">
+
+  <!-- Trend chart -->
+  <div class="chart-card">
+    <div class="chart-header">
+      <h2>False Positive Rate &amp; Accuracy Trend</h2>
+      <div class="chart-controls">
+        <button class="btn-sm active" onclick="loadTrend(30,this)">30d</button>
+        <button class="btn-sm"       onclick="loadTrend(14,this)">14d</button>
+        <button class="btn-sm"       onclick="loadTrend(7,this)">7d</button>
+      </div>
+    </div>
+    <div class="chart-container" id="trend-wrap">
+      <canvas id="trendChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Precision / Recall panel -->
+  <div class="chart-card">
+    <div class="chart-header">
+      <h2>This Month</h2>
+    </div>
+
+    <div id="pr-section">
+      <div class="pr-item">
+        <div class="pr-label">Precision</div>
+        <div class="pr-gauge"><div class="pr-fill" id="precision-fill"></div></div>
+        <div class="pr-value" id="precision-val">—</div>
+      </div>
+      <div class="pr-item">
+        <div class="pr-label">Recall</div>
+        <div class="pr-gauge"><div class="pr-fill" id="recall-fill"></div></div>
+        <div class="pr-value" id="recall-val">—</div>
+      </div>
+      <div class="pr-item">
+        <div class="pr-label">F1 Score</div>
+        <div class="pr-gauge"><div class="pr-fill" id="f1-fill"></div></div>
+        <div class="pr-value" id="f1-val">—</div>
+      </div>
+
+      <div class="cm-grid" id="cm-grid" style="margin-top:1.5rem"></div>
+      <div class="cm-legend" id="cm-legend"></div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let trendInst = null;
+
+async function loadStats() {
+  const d = await fetch('/api/stats').then(r => r.json());
+  document.getElementById('stat-today').textContent    = d.today.toLocaleString();
+  document.getElementById('stat-fp').textContent       = d.fp_caught.toLocaleString();
+  document.getElementById('stat-time').textContent     = d.time_saved_hrs.toFixed(1);
+  document.getElementById('stat-accuracy').textContent = d.accuracy.toFixed(1) + '%';
+  document.getElementById('stat-total').textContent    = d.total.toLocaleString();
+}
+
+async function loadTrend(days, btn) {
+  document.querySelectorAll('.chart-controls .btn-sm').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+
+  const data = await fetch(`/api/trend?days=${days}`).then(r => r.json());
+
+  if (!data.length) {
+    document.getElementById('trend-wrap').innerHTML = emptyHTML('📊', 'No trend data yet. Analyze some alerts and record feedback.');
+    return;
+  }
+
+  const labels  = data.map(d => d.date);
+  const fpRates = data.map(d => d.fp_rate);
+  const acc     = data.map(d => d.accuracy);
+
+  if (trendInst) trendInst.destroy();
+  const ctx = document.getElementById('trendChart');
+  if (!ctx) return;
+
+  trendInst = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'FP Rate (%)',
+          data: fpRates,
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239,68,68,0.07)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+        },
+        {
+          label: 'Accuracy (%)',
+          data: acc,
+          borderColor: '#22c55e',
+          backgroundColor: 'rgba(34,197,94,0.07)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#94a3b8', usePointStyle: true } },
+        tooltip: { backgroundColor: '#1e293b', borderColor: '#334155', borderWidth: 1 },
+      },
+      scales: {
+        x: { ticks: { color: '#64748b', maxRotation: 45 }, grid: { color: '#1e293b' } },
+        y: { min: 0, max: 100, ticks: { color: '#64748b', callback: v => v + '%' }, grid: { color: '#1e293b' } },
+      },
+    },
+  });
+}
+
+async function loadPR() {
+  const d = await fetch('/api/precision-recall').then(r => r.json());
+
+  const set = (id, val) => {
+    document.getElementById(id + '-fill').style.width = val + '%';
+    document.getElementById(id + '-val').textContent  = val.toFixed(1) + '%';
+  };
+  set('precision', d.precision);
+  set('recall',    d.recall);
+  set('f1',        d.f1);
+
+  document.getElementById('cm-grid').innerHTML = `
+    <div class="cm-cell tp">TP: ${d.tp}</div>
+    <div class="cm-cell fp">FP: ${d.fp}</div>
+    <div class="cm-cell fn">FN: ${d.fn}</div>
+    <div class="cm-cell tn">TN: ${d.tn}</div>
+  `;
+  document.getElementById('cm-legend').textContent = 'Confusion matrix (this month)';
+}
+
+async function init() {
+  await Promise.all([loadStats(), loadTrend(30, null), loadPR()]);
+  updateTimestamp();
+}
+
+setupAutoRefresh(init);
+init();
+</script>
+{% endblock %}

@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Admin</h1>
+  <p class="subtitle">Database management and environment configuration</p>
+</div>
+
+<div id="alert-container"></div>
+
+<div class="admin-grid">
+
+  <!-- Database stats -->
+  <div class="card">
+    <div class="card-title">Database Info</div>
+    <div id="db-stats">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
+    </div>
+  </div>
+
+  <!-- Export -->
+  <div class="card">
+    <div class="card-title">Export Data</div>
+    <p style="font-size:0.875rem;color:var(--text-muted);margin-bottom:1.25rem">
+      Download all feedback records for this client as a CSV file.
+    </p>
+    <div class="export-row">
+      <a href="/api/admin/export" class="btn btn-ghost" download>
+        &#8681; Download CSV
+      </a>
+      <span style="font-size:0.75rem;color:var(--text-muted)">feedback_{{ client_id }}_&lt;date&gt;.csv</span>
+    </div>
+  </div>
+
+  <!-- Add environment context -->
+  <div class="card">
+    <div class="card-title">Add Environment Context</div>
+    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:1rem">
+      Store infrastructure patterns (office IPs, scanners, maintenance windows) for AI context.
+    </p>
+    <form id="ctx-form" onsubmit="addContext(event)">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="ctx-key">Key <span style="color:var(--red)">*</span></label>
+          <input id="ctx-key" class="form-control" placeholder="e.g. office_ip_range" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ctx-val">Value <span style="color:var(--red)">*</span></label>
+          <input id="ctx-val" class="form-control" placeholder="e.g. 10.0.0.0/8" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="ctx-notes">Notes (optional)</label>
+        <input id="ctx-notes" class="form-control" placeholder="e.g. Head office CIDR block">
+      </div>
+      <button type="submit" class="btn btn-primary">Add Context</button>
+    </form>
+  </div>
+
+  <!-- Context list -->
+  <div class="card">
+    <div class="card-title">Stored Context</div>
+    <div id="ctx-list">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Danger zone -->
+<div class="danger-zone" style="margin-top:1.5rem">
+  <div class="card-title">Danger Zone</div>
+  <p>Delete all feedback records for client <strong>{{ client_id }}</strong>. This cannot be undone.</p>
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+    <input id="reset-confirm" class="form-control" placeholder='Type RESET to confirm' style="max-width:220px">
+    <button class="btn btn-danger" onclick="resetFeedback()">Clear All Feedback</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadStats() {
+  const d = await fetch('/api/admin/stats').then(r => r.json());
+  const container = document.getElementById('db-stats');
+
+  const verdictRows = Object.entries(d.by_verdict || {})
+    .map(([v, n]) => `
+      <div class="info-row">
+        <span class="info-label">${verdictLabel(v)}</span>
+        <span class="info-value">${n.toLocaleString()}</span>
+      </div>
+    `).join('') || '<div class="info-row"><span class="info-label" style="color:var(--text-muted)">No data</span></div>';
+
+  container.innerHTML = `
+    <div class="info-row">
+      <span class="info-label">Client ID</span>
+      <span class="info-value" style="font-family:monospace">${esc(d.client_id)}</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Database path</span>
+      <span class="info-value" style="font-family:monospace;font-size:0.75rem">${esc(d.db_path)}</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">DB exists</span>
+      <span class="info-value" style="color:${d.db_exists?'var(--green)':'var(--red)'}">
+        ${d.db_exists ? '✓ Yes' : '✗ No'}
+      </span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">DB size</span>
+      <span class="info-value">${d.db_size_kb} KB</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Total records</span>
+      <span class="info-value">${(d.total_records || 0).toLocaleString()}</span>
+    </div>
+    <div style="margin-top:0.75rem;font-size:0.75rem;color:var(--text-muted);margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em">By Verdict</div>
+    ${verdictRows}
+  `;
+}
+
+async function loadContext() {
+  const d = await fetch('/api/admin/context').then(r => r.json());
+  const container = document.getElementById('ctx-list');
+
+  if (!d.context.length) {
+    container.innerHTML = `<p style="color:var(--text-muted);font-size:0.875rem;padding:0.5rem 0">No context items stored.</p>`;
+    return;
+  }
+
+  container.innerHTML = d.context.map(c => `
+    <div class="context-item" id="ctx-${c.id}">
+      <div style="flex:1;min-width:0">
+        <div class="context-key">${esc(c.key)}</div>
+        <div class="context-val">${esc(c.value)}</div>
+        ${c.notes ? `<div class="context-notes">${esc(c.notes)}</div>` : ''}
+        <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.25rem">${fmtDate(c.created)}</div>
+      </div>
+      <button class="btn-delete" onclick="deleteContext('${c.id}')" title="Delete">✕</button>
+    </div>
+  `).join('');
+}
+
+async function addContext(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+
+  const body = {
+    key:   document.getElementById('ctx-key').value.trim(),
+    value: document.getElementById('ctx-val').value.trim(),
+    notes: document.getElementById('ctx-notes').value.trim(),
+  };
+
+  try {
+    const r = await fetch('/api/admin/context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (r.ok) {
+      showAlert('Context item added.', 'success');
+      e.target.reset();
+      loadContext();
+    } else {
+      showAlert(d.error || 'Failed to add context.', 'error');
+    }
+  } catch {
+    showAlert('Network error.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Add Context';
+  }
+}
+
+async function deleteContext(id) {
+  if (!confirm('Delete this context item?')) return;
+  const r = await fetch(`/api/admin/context/${id}`, { method: 'DELETE' });
+  if (r.ok) {
+    const el = document.getElementById(`ctx-${id}`);
+    if (el) el.remove();
+    if (!document.querySelector('#ctx-list .context-item')) {
+      document.getElementById('ctx-list').innerHTML = `<p style="color:var(--text-muted);font-size:0.875rem;padding:0.5rem 0">No context items stored.</p>`;
+    }
+  }
+}
+
+async function resetFeedback() {
+  const val = document.getElementById('reset-confirm').value;
+  if (val !== 'RESET') {
+    showAlert('Type RESET in the confirmation box first.', 'error');
+    return;
+  }
+
+  const r = await fetch('/api/admin/reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirm: 'RESET' }),
+  });
+  const d = await r.json();
+  if (r.ok) {
+    showAlert('All feedback cleared. Database is now empty.', 'success');
+    document.getElementById('reset-confirm').value = '';
+    loadStats();
+  } else {
+    showAlert(d.error || 'Reset failed.', 'error');
+  }
+}
+
+function verdictLabel(v) {
+  return { true_positive: 'True Positive', false_positive: 'False Positive', escalated: 'Escalated', closed: 'Closed' }[v] || v;
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function init() {
+  await Promise.all([loadStats(), loadContext()]);
+  updateTimestamp();
+}
+
+init();
+</script>
+{% endblock %}

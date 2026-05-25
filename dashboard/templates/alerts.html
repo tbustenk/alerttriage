@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Alerts{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Alerts</h1>
+  <p class="subtitle">Analysed alerts with analyst verdicts</p>
+</div>
+
+<div class="card">
+  <!-- Filters -->
+  <div class="filters">
+    <button class="filter-btn active" onclick="setVerdict('', this)">All</button>
+    <button class="filter-btn" onclick="setVerdict('false_positive', this)">False Positive</button>
+    <button class="filter-btn" onclick="setVerdict('true_positive', this)">True Positive</button>
+    <button class="filter-btn" onclick="setVerdict('escalated', this)">Escalated</button>
+    <button class="filter-btn" onclick="setVerdict('closed', this)">Closed</button>
+
+    <div class="filters-right">
+      <span id="table-count" style="font-size:0.8rem;color:var(--text-muted)"></span>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <table id="alerts-table">
+      <thead>
+        <tr>
+          <th onclick="setSort('alert_id')"    data-col="alert_id">    Alert ID    <span class="sort-icon">↕</span></th>
+          <th onclick="setSort('rule_name')"   data-col="rule_name">   Rule / Type <span class="sort-icon">↕</span></th>
+          <th onclick="setSort('analyst_verdict')" data-col="analyst_verdict">Verdict <span class="sort-icon">↕</span></th>
+          <th onclick="setSort('ai_correct')"  data-col="ai_correct">  AI Correct  <span class="sort-icon">↕</span></th>
+          <th>Confidence</th>
+          <th>Notes</th>
+          <th onclick="setSort('timestamp')"   data-col="timestamp">   Timestamp   <span class="sort-icon">↕</span></th>
+        </tr>
+      </thead>
+      <tbody id="alerts-body">
+        <tr><td colspan="7" style="padding:0">
+          <div class="loading"><div class="spinner"></div>Loading...</div>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="pagination" id="pagination"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let state = { verdict: '', sort: 'timestamp', order: 'desc', page: 1, total: 0, per_page: 50 };
+
+function setVerdict(v, btn) {
+  state.verdict = v;
+  state.page = 1;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  load();
+}
+
+function setSort(col) {
+  if (state.sort === col) {
+    state.order = state.order === 'asc' ? 'desc' : 'asc';
+  } else {
+    state.sort = col;
+    state.order = 'desc';
+  }
+  state.page = 1;
+  updateSortHeaders();
+  load();
+}
+
+function updateSortHeaders() {
+  document.querySelectorAll('th[data-col]').forEach(th => {
+    th.classList.remove('sort-active');
+    const icon = th.querySelector('.sort-icon');
+    if (icon) icon.textContent = '↕';
+  });
+  const active = document.querySelector(`th[data-col="${state.sort}"]`);
+  if (active) {
+    active.classList.add('sort-active');
+    const icon = active.querySelector('.sort-icon');
+    if (icon) icon.textContent = state.order === 'asc' ? '↑' : '↓';
+  }
+}
+
+async function load() {
+  const body = document.getElementById('alerts-body');
+  body.innerHTML = `<tr><td colspan="7" style="padding:0">${loadingHTML()}</td></tr>`;
+
+  const params = new URLSearchParams({
+    sort: state.sort, order: state.order,
+    page: state.page, per_page: state.per_page,
+  });
+  if (state.verdict) params.set('verdict', state.verdict);
+
+  const d = await fetch('/api/alerts?' + params).then(r => r.json());
+  state.total = d.total;
+
+  document.getElementById('table-count').textContent =
+    `${d.total.toLocaleString()} alert${d.total !== 1 ? 's' : ''}`;
+
+  if (!d.alerts.length) {
+    body.innerHTML = `<tr><td colspan="7" style="padding:0">${emptyHTML('🔍', 'No alerts match the current filter.')}</td></tr>`;
+    document.getElementById('pagination').innerHTML = '';
+    return;
+  }
+
+  body.innerHTML = d.alerts.map(a => `
+    <tr>
+      <td style="font-family:monospace;font-size:0.75rem">${esc(a.alert_id)}</td>
+      <td>${esc(a.rule_name)}</td>
+      <td>${verdictBadge(a.verdict)}</td>
+      <td>${correctBadge(a.ai_correct)}</td>
+      <td>${a.confidence !== null && a.confidence !== undefined ? (a.confidence * 100).toFixed(0) + '%' : '—'}</td>
+      <td class="td-truncate" title="${esc(a.notes || '')}">${esc(a.notes || '—')}</td>
+      <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(a.timestamp)}</td>
+    </tr>
+  `).join('');
+
+  renderPagination(d.total, d.page, d.per_page);
+  updateTimestamp();
+}
+
+function renderPagination(total, page, perPage) {
+  const pages = Math.ceil(total / perPage);
+  if (pages <= 1) { document.getElementById('pagination').innerHTML = ''; return; }
+
+  let html = `<button class="page-btn" onclick="goPage(${page-1})" ${page<=1?'disabled':''}>‹ Prev</button>`;
+
+  let start = Math.max(1, page - 2);
+  let end   = Math.min(pages, start + 4);
+  start = Math.max(1, end - 4);
+
+  if (start > 1) html += `<button class="page-btn" onclick="goPage(1)">1</button><span style="color:var(--text-muted);padding:0 0.25rem">…</span>`;
+  for (let i = start; i <= end; i++) {
+    html += `<button class="page-btn${i===page?' active':''}" onclick="goPage(${i})">${i}</button>`;
+  }
+  if (end < pages) html += `<span style="color:var(--text-muted);padding:0 0.25rem">…</span><button class="page-btn" onclick="goPage(${pages})">${pages}</button>`;
+  html += `<button class="page-btn" onclick="goPage(${page+1})" ${page>=pages?'disabled':''}>Next ›</button>`;
+
+  document.getElementById('pagination').innerHTML = html;
+}
+
+function goPage(p) {
+  const pages = Math.ceil(state.total / state.per_page);
+  state.page = Math.max(1, Math.min(pages, p));
+  load();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+setupAutoRefresh(load);
+load();
+</script>
+{% endblock %}
