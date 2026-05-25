@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Paths reflect the actual on-disk layout (flat — see docs/ARCHITECTURE.md).
+# Imports use the dotted ``alerttriage.src.*`` form; conftest.py at the
+# repo root bootstraps sys.path so those imports resolve from the checkout dir.
+
 jobs:
   # ── Lint & type-check ────────────────────────────────────────────────────
   lint:
@@ -27,14 +31,14 @@ jobs:
         run: pip install types-PyYAML types-requests
 
       - name: Ruff — lint
-        run: ruff check alerttriage/ scripts/ tests/
+        run: ruff check src/ scripts/ tests/ config/
 
       - name: Ruff — format check
-        run: ruff format --check alerttriage/ scripts/ tests/
+        run: ruff format --check src/ scripts/ tests/ config/
 
       - name: Mypy — type check
         run: |
-          mypy alerttriage/ \
+          mypy src/ config/ \
             --ignore-missing-imports \
             --python-version 3.11 \
             --strict-optional \
@@ -66,9 +70,10 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests
+        # conftest.py at the repo root puts the parent dir on sys.path
+        # so the dotted ``alerttriage.*`` imports resolve.
         run: pytest tests/ -v --tb=short
         env:
-          # Tests run in dry-run / offline mode — no real API keys required.
           ANTHROPIC_API_KEY: "sk-ant-test-key"
           OPENAI_API_KEY: "sk-test-key"
 
