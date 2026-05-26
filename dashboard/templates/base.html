@@ -23,7 +23,10 @@
     <li><a href="/alerts"   {% if request.endpoint == 'alerts_page'   %}class="active"{% endif %}>Alerts</a></li>
     <li><a href="/learning" {% if request.endpoint == 'learning_page' %}class="active"{% endif %}>Learning</a></li>
     <li><a href="/feedback" {% if request.endpoint == 'feedback_page' %}class="active"{% endif %}>Feedback</a></li>
-    <li><a href="/admin"    {% if request.endpoint == 'admin_page'    %}class="active"{% endif %}>Admin</a></li>
+    <li><a href="/admin"         {% if request.endpoint == 'admin_page'         %}class="active"{% endif %}>Admin</a></li>
+    <li><a href="/analytics"     {% if request.endpoint == 'analytics_page'     %}class="active"{% endif %}>Analytics</a></li>
+    <li><a href="/config-editor" {% if request.endpoint == 'config_editor_page' %}class="active"{% endif %}>Config</a></li>
+    <li><a href="/webhooks-mgmt" {% if request.endpoint == 'webhooks_page'      %}class="active"{% endif %}>Webhooks</a></li>
   </ul>
 
   <div class="nav-meta">

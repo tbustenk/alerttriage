@@ -1,0 +1,6 @@
+# AlertTriage v2 — API server dependencies
+# Install alongside base: pip install -r requirements.txt -r requirements-api.txt
+
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+prometheus-client>=0.21.0

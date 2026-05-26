@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Analytics &amp; ROI</h1>
+  <p class="subtitle">Performance reporting and return-on-investment for <strong>{{ client_id }}</strong></p>
+</div>
+
+<!-- Controls -->
+<div class="card" style="margin-bottom:1.25rem">
+  <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap">
+    <div>
+      <label class="form-label" style="margin-bottom:0.25rem">Period</label>
+      <select id="sel-days" class="form-control" style="width:auto" onchange="reload()">
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+    </div>
+    <div>
+      <label class="form-label" style="margin-bottom:0.25rem">Analyst rate ($/hr)</label>
+      <input id="inp-rate" class="form-control" type="number" value="75" min="0" style="width:100px" onchange="reload()">
+    </div>
+    <div>
+      <label class="form-label" style="margin-bottom:0.25rem">Min/alert</label>
+      <input id="inp-min" class="form-control" type="number" value="15" min="1" max="120" style="width:80px" onchange="reload()">
+    </div>
+  </div>
+</div>
+
+<!-- KPI tiles -->
+<div class="stats-grid" id="kpi-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Alerts</div>
+    <div class="stat-value" id="kpi-total">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">AI Accuracy</div>
+    <div class="stat-value acc-value" id="kpi-acc">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Hours Saved</div>
+    <div class="stat-value" id="kpi-hours">—</div>
+    <div class="stat-sub">analyst time freed</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Labor Value</div>
+    <div class="stat-value" id="kpi-labor">—</div>
+    <div class="stat-sub">at configured rate</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">AI Cost</div>
+    <div class="stat-value" id="kpi-cost">—</div>
+    <div class="stat-sub">estimated</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Net ROI</div>
+    <div class="stat-value" id="kpi-roi">—</div>
+    <div class="stat-sub">labor value − AI cost</div>
+  </div>
+</div>
+
+<!-- Charts row -->
+<div class="charts-row">
+  <div class="chart-card">
+    <div class="chart-header"><h2>Weekly Accuracy</h2></div>
+    <div class="chart-container"><canvas id="weeklyChart"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-header"><h2>Alert Volume by Week</h2></div>
+    <div class="chart-container"><canvas id="volumeChart"></canvas></div>
+  </div>
+</div>
+
+<!-- Rule breakdown table -->
+<div class="card" style="margin-top:1.25rem">
+  <div class="card-title">Alert-Type Breakdown</div>
+  <div id="breakdown-container">
+    <div class="loading"><div class="spinner"></div>Loading…</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let weeklyChart = null;
+let volumeChart = null;
+
+function params() {
+  return new URLSearchParams({
+    days: document.getElementById('sel-days').value,
+    hourly_rate: document.getElementById('inp-rate').value,
+    minutes_per_alert: document.getElementById('inp-min').value,
+  });
+}
+
+function fmt(n, decimals=1) { return n == null ? '—' : Number(n).toFixed(decimals); }
+function fmtUsd(n) { return n == null ? '—' : '$' + Number(n).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+async function loadSummary() {
+  const res = await fetch('/api/analytics/summary?' + params()).then(r => r.json()).catch(() => null);
+  if (!res) return;
+  document.getElementById('kpi-total').textContent = res.total ?? '—';
+  document.getElementById('kpi-acc').textContent = fmt(res.accuracy) + '%';
+  document.getElementById('kpi-hours').textContent = fmt(res.hours_saved) + 'h';
+  document.getElementById('kpi-labor').textContent = fmtUsd(res.labor_value_usd);
+  document.getElementById('kpi-cost').textContent = fmtUsd(res.ai_cost_usd);
+  document.getElementById('kpi-roi').textContent = fmtUsd(res.net_value_usd);
+
+  const labels = (res.weeks || []).map(w => w.week);
+  const accData = (res.weeks || []).map(w => w.accuracy);
+  const volData = (res.weeks || []).map(w => w.total);
+
+  const baseOpts = { responsive: true, maintainAspectRatio: false };
+
+  if (weeklyChart) weeklyChart.destroy();
+  weeklyChart = new Chart(document.getElementById('weeklyChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Accuracy %',
+        data: accData,
+        borderColor: '#4f9cf9',
+        backgroundColor: 'rgba(79,156,249,0.15)',
+        fill: true,
+        tension: 0.3,
+      }],
+    },
+    options: { ...baseOpts, scales: { y: { min: 0, max: 100 } } },
+  });
+
+  if (volumeChart) volumeChart.destroy();
+  volumeChart = new Chart(document.getElementById('volumeChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Alerts',
+        data: volData,
+        backgroundColor: 'rgba(99,179,237,0.7)',
+      }],
+    },
+    options: { ...baseOpts, scales: { y: { beginAtZero: true } } },
+  });
+}
+
+async function loadBreakdown() {
+  const res = await fetch('/api/analytics/breakdown?' + params()).then(r => r.json()).catch(() => null);
+  const el = document.getElementById('breakdown-container');
+  if (!res || !res.rules || !res.rules.length) {
+    el.innerHTML = '<p style="color:var(--text-muted);padding:1rem">No data for this period.</p>';
+    return;
+  }
+  let html = '<div class="table-wrap"><table class="data-table"><thead><tr>' +
+    '<th>Rule</th><th>Total</th><th>Correct</th><th>FPs</th><th>FP Rate</th><th>Accuracy</th>' +
+    '</tr></thead><tbody>';
+  for (const r of res.rules) {
+    const fpClass = r.fp_rate > 40 ? 'style="color:var(--red)"' : r.fp_rate > 20 ? 'style="color:var(--yellow)"' : '';
+    html += `<tr>
+      <td><code>${r.rule}</code>${r.rule === res.most_problematic ? ' <span title="Most problematic">⚠️</span>' : ''}${r.rule === res.most_common ? ' <span title="Most common">📊</span>' : ''}</td>
+      <td>${r.total}</td><td>${r.correct}</td><td>${r.false_positives}</td>
+      <td ${fpClass}>${r.fp_rate}%</td>
+      <td>${r.accuracy}%</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+function reload() {
+  loadSummary();
+  loadBreakdown();
+}
+
+reload();
+</script>
+{% endblock %}

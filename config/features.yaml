@@ -1,0 +1,51 @@
+# AlertTriage v2 — Global Feature Flags
+#
+# Each flag can be overridden per-client in client_configs/<id>.yaml under
+# the "features" key.  Set ALERTTRIAGE_FEATURE_<FLAG>=true/false to override
+# from the environment (useful in Docker/K8s without editing files).
+
+analytics:
+  enabled: true
+  description: "Advanced analytics engine and ROI reporting"
+
+webhooks:
+  enabled: true
+  description: "Outbound webhook notifications to client endpoints"
+
+pdf_export:
+  enabled: true
+  description: "PDF report export (requires fpdf2: pip install fpdf2)"
+
+auto_dismiss:
+  enabled: false
+  description: "Auto-dismiss alerts where AI confidence exceeds threshold"
+  # Per-client config:
+  #   features:
+  #     auto_dismiss:
+  #       enabled: true
+  #       confidence_threshold: 0.97
+  #       verdicts: [benign, false_positive]
+
+hot_reload:
+  enabled: true
+  description: "Reload config files without restarting the API"
+
+scheduled_reports:
+  enabled: true
+  description: "Automated scheduled report email delivery"
+
+config_versioning:
+  enabled: true
+  description: "Config snapshot and rollback (stores up to 20 versions per client)"
+
+prompt_learning:
+  enabled: true
+  description: "Inject learned FP-rate hints into the AI system prompt"
+
+cost_tracking:
+  enabled: true
+  description: "Track and enforce per-client AI spend limits"
+
+pii_anonymization:
+  enabled: true
+  description: "Anonymise PII before sending alerts to AI backends"

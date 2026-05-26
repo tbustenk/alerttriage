@@ -1,0 +1,98 @@
+# AlertTriage v2 — Docker Compose stack
+#
+# Services:
+#   api        — AlertTriage REST API (always starts)
+#   postgres   — PostgreSQL for future persistence (profile: postgres)
+#
+# Quick start:
+#   cp .env.example .env && editor .env
+#   docker compose up api
+#
+# With PostgreSQL:
+#   docker compose --profile postgres up
+#
+# Run a one-shot triage batch for a client:
+#   docker compose run --rm triage --client-id acme-corp
+
+services:
+
+  # ── REST API ──────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: alerttriage:latest
+    container_name: alerttriage-api
+    entrypoint: ["python", "scripts/run_api.py"]
+    command: ["--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${ALERTTRIAGE_API_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      ALERTTRIAGE_DATA_DIR: /data
+      ALERTTRIAGE_REPORTS_DIR: /reports
+      ALERTTRIAGE_JSON_LOGS: "true"
+    volumes:
+      - alerttriage-data:/data
+      - alerttriage-reports:/reports
+      - ./config:/app/alerttriage/config:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+
+  # ── One-shot CLI triage runner ─────────────────────────────────────────────
+  triage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: alerttriage:latest
+    container_name: alerttriage-triage
+    # Usage: docker compose run --rm triage --client-id acme-corp
+    env_file:
+      - .env
+    environment:
+      ALERTTRIAGE_DATA_DIR: /data
+      ALERTTRIAGE_REPORTS_DIR: /reports
+    volumes:
+      - alerttriage-data:/data
+      - alerttriage-reports:/reports
+      - ./config:/app/alerttriage/config:ro
+    profiles:
+      - triage
+
+  # ── PostgreSQL (optional — profile: postgres) ──────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: alerttriage-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-alerttriage}
+      POSTGRES_USER: ${POSTGRES_USER:-alerttriage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-alerttriage}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - postgres
+
+volumes:
+  alerttriage-data:
+    driver: local
+  alerttriage-reports:
+    driver: local
+  postgres-data:
+    driver: local

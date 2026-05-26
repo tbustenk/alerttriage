@@ -1,30 +1,68 @@
-# AlertTriage v2
+# AlertTriage
 
-[![CI](https://github.com/tbustenk/alerttriage/actions/workflows/ci.yml/badge.svg)](https://github.com/tbustenk/alerttriage/actions/workflows/ci.yml)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Tests](https://github.com/tbustenk/alerttriage/actions/workflows/tests.yml/badge.svg)](https://github.com/tbustenk/alerttriage/actions/workflows/tests.yml)
+[![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen)](#)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-Production-grade AI alert triage. Connects to your SIEM, anonymises every
-alert before it touches an AI model, routes it through Claude or GPT, and
-writes the verdict back. Analyst decisions feed a per-client feedback loop
-that prepends learning hints to future system prompts — no fine-tuning,
-no embeddings.
+**AI-powered alert triage that gets smarter with every analyst decision.**
+
+AlertTriage connects to your SIEM, runs each alert through Claude or GPT, and returns a verdict with confidence score and recommended actions — in under 200 ms. Every time an analyst corrects or confirms the AI, that signal is fed back into the next analysis. No fine-tuning. No embeddings. No infrastructure changes.
 
 ---
 
-## Features
+## What it does
 
-| Feature | Details |
+```
+SIEM alert → PII scrubbed → AI triage → verdict + confidence → SIEM
+                                ↑
+                     analyst feedback loop
+```
+
+Alerts come in. Verdicts go out. Analyst corrections make the next round smarter. Over time, false-positive rates fall and mean-time-to-triage drops.
+
+---
+
+## Notable features
+
+### AI triage
+- Routes alerts to **Claude** (Sonnet / Opus / Haiku) or **GPT** (4o / 4o-mini) — configurable per client
+- Returns verdict, confidence score, risk factors, and recommended actions
+- **Prompt caching** on Claude: repeated system prompts billed at ~10% of normal input rate
+
+### Data protection
+- **PII anonymisation** before any data reaches an AI provider — IPs, usernames, emails, card numbers, SSNs, and API keys are stripped or pseudonymised with a per-client salt
+- Configurable **request size limits** and **security headers** (CSP, HSTS, X-Frame-Options)
+- **Audit log** on every API call: who, what, when, outcome
+- **Secrets management**: env vars → AWS Secrets Manager → HashiCorp Vault, in priority order
+
+### Learning loop
+- Analyst verdicts (true positive / false positive / escalated / closed) are stored per client in SQLite
+- Learning engine builds **prompt hints** from verdict history and prepends them to future analyses
+- Accuracy and false-positive rate trend over time as the system learns each client's environment
+
+### Analytics & ROI
+- **Weekly summaries**: throughput, accuracy, hours saved, labor value, AI cost, net ROI
+- **Alert-type breakdown**: which rules generate the most false positives
+- **False-positive pattern analysis** with recommendations
+- **Scheduled reports** delivered by email (HTML, CSV, JSON, PDF)
+- All figures available via REST API or the included web dashboard
+
+### Integrations
+| Connector | Details |
 |---|---|
-| Multi-model AI | Claude (Sonnet / Opus / Haiku) and GPT (4o / 4o-mini); per-client selection with automatic fallback |
-| SIEM connectors | Splunk Enterprise Security, Elasticsearch/ELK, generic HTTPS webhook |
-| PII anonymisation | IPs, usernames, emails, card numbers, SSNs, and API keys stripped before any data reaches an AI provider |
-| Feedback loop | Analyst verdicts → SQLite → cached prompt hints (see [docs/FEEDBACK.md](docs/FEEDBACK.md)) |
-| Production hardening | Atomic cost-state writes, daily/monthly rollover, retry-with-backoff, rate-limit awareness, graceful corrupt-DB recovery |
-| Cost control | Per-client daily and monthly hard limits; spend tracked across restarts |
-| Reporting | HTML and JSON reports (accuracy, cost, verdict breakdown) |
-| Multi-tenant | Isolated config, data, and cost state per client |
-| Prompt caching | Claude backend uses Anthropic prompt caching; repeated system prompts billed at ~10% of input rate |
+| Splunk Enterprise Security | Fetch notable events; write verdict fields back |
+| Elasticsearch / ELK | Query indices; update documents with triage results |
+| Generic HTTPS webhook | Outbound signed events for any downstream system |
+| REST API | Full programmatic access — analyze, feedback, stats, config |
+
+### Enterprise operations
+- **Multi-tenant**: isolated config, data, and cost state per client
+- **Cost control**: per-client daily and monthly hard limits, tracked across restarts
+- **Outbound webhooks**: sign payloads with HMAC-SHA256; retry with exponential backoff
+- **Hot-reload**: config changes take effect without a restart
+- **Config versioning**: snapshot and rollback any client config
+- **Rate limiting**: sliding-window per-IP with configurable RPM
 
 ---
 
@@ -37,87 +75,45 @@ cd alerttriage
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
-# 2. Configure credentials
+# 2. Set credentials
 export ANTHROPIC_API_KEY=sk-ant-…           # or OPENAI_API_KEY
 export ALERTTRIAGE_ANONYMIZE_SALT=$(openssl rand -hex 16)
 
-# 3. Onboard a client (interactive wizard)
+# 3. Onboard a client
 python scripts/init_client.py
 
-# 4. Sanity-check connectivity (no AI cost, no SIEM writes)
+# 4. Dry run — no AI cost, no SIEM writes
 python scripts/run_client.py --client-id <id> --limit 10 --dry-run
 
-# 5. Run a real triage batch
+# 5. Run live triage
 python scripts/run_client.py --client-id <id> --limit 100
 ```
 
-Tests run offline with no live keys:
+Or run as an API service:
 
 ```bash
-pytest tests/ -v
-pytest tests/ --cov=alerttriage --cov-report=term-missing
+uvicorn alerttriage.src.api.app:app --host 0.0.0.0 --port 8000
 ```
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Docker, environment variables, and production checklist.
 
 ---
 
 ## Documentation
 
-| Document | Contents |
+| Guide | Contents |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How alerts flow through the system, on-disk layout, multi-tenancy, extension points |
-| [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md) | Onboarding walkthrough, config reference, credential rotation, cost management |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production checklist, environment variables, Docker, observability, DR |
-| [docs/FEEDBACK.md](docs/FEEDBACK.md) | How analyst verdicts shape future analyses |
-| [docs/API.md](docs/API.md) | Class and method reference |
+| [Architecture](docs/ARCHITECTURE.md) | Data flow, on-disk layout, feedback loop, multi-tenancy |
+| [Deployment](docs/DEPLOYMENT.md) | Docker, env vars, production checklist, Kubernetes, DR |
+| [API Reference](docs/API.md) | Every endpoint with request/response examples |
+| [Client Setup](docs/CLIENT_SETUP.md) | Step-by-step onboarding, config fields, credential rotation |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common errors, DB recovery, SIEM connectivity |
+| [Performance](docs/PERFORMANCE.md) | SQLite tuning, caching, benchmark targets, scaling tiers |
+| [Security](docs/SECURITY.md) | Auth, HMAC signing, secrets management, compliance controls |
+| [Contributing](CONTRIBUTING.md) | Dev setup, PR checklist, architecture decisions |
 
 ---
-
-## Project layout
-
-The on-disk layout is **flat** (`config/`, `src/`, `scripts/`, `tests/`
-all at the repo root). Imports nevertheless use the dotted form
-`alerttriage.config.*` / `alerttriage.src.*`, so:
-
-* `pip install -e .` is the supported install path.
-* When running scripts directly, the repo directory must be named
-  `alerttriage` so the parent shows up on `sys.path` as the package root.
-  `scripts/run_client.py` handles this for you.
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#on-disk-layout) for the
-full tree.
-
----
-
-## Adding a new AI model
-
-1. Add a spec to `config/models.yaml` (`provider`, `model_name`, `max_tokens`, `temperature`).
-2. If it's a new provider, create `src/models/<provider>_backend.py` with
-   `async def analyze(alert, *, system_prompt, retry_config) -> AnalysisResult`.
-3. Register it in `ModelRouter._load_backends()`.
-4. Set it as `model:` in a client config.
-
----
-
-## Adding a new SIEM connector
-
-1. Create `src/integrations/<name>_connector.py`, subclass `SIEMConnector`.
-2. Implement `fetch_alerts()`, `send_result()`, `health_check()` (and optionally `close()`).
-3. Register it in `scripts/run_client.py`'s `_build_connector()` factory.
-4. Add a `type: <name>` example to `config/client_configs/template.yaml`.
-
----
-
-## Contributing
-
-We welcome bug reports, feature requests, and pull requests. Please read
-[CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
-
-## Security
-
-For security vulnerabilities, please **do not open a public issue**. See
-[SECURITY.md](SECURITY.md) for the disclosure process and self-hosting
-guidance.
 
 ## License
 
-[MIT](LICENSE) — see the LICENSE file for details.
+[MIT](LICENSE)

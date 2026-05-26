@@ -565,3 +565,307 @@ def api_admin_reset():
         get_db().commit()
 
     return jsonify({"status": "cleared", "client_id": CLIENT_ID})
+
+
+# ---------------------------------------------------------------------------
+# Analytics page
+# ---------------------------------------------------------------------------
+
+@app.route("/analytics")
+def analytics_page():
+    return render_template("analytics.html", client_id=CLIENT_ID)
+
+
+@app.route("/api/analytics/summary")
+def api_analytics_summary():
+    days = int(request.args.get("days", 30))
+    hourly_rate = float(request.args.get("hourly_rate", 75.0))
+    minutes_per_alert = float(request.args.get("minutes_per_alert", 15.0))
+    if not _has_feedback_table():
+        return jsonify({"total": 0, "accuracy": 0, "hours_saved": 0, "labor_value_usd": 0,
+                        "ai_cost_usd": 0, "net_value_usd": 0, "weeks": []})
+
+    since = (date.today() - timedelta(days=days)).isoformat()
+    rows = q(
+        """
+        SELECT strftime('%Y-W%W', timestamp) AS week,
+               COUNT(*) AS total,
+               SUM(ai_correct) AS correct,
+               SUM(CASE WHEN analyst_verdict='false_positive' THEN 1 ELSE 0 END) AS fps
+        FROM feedback
+        WHERE client_id = ? AND timestamp >= ?
+        GROUP BY week ORDER BY week
+        """,
+        (CLIENT_ID, since),
+    )
+    weeks = []
+    total_correct = 0
+    total_count = 0
+    for r in rows:
+        correct = r["correct"] or 0
+        total = r["total"] or 0
+        total_correct += correct
+        total_count += total
+        weeks.append({
+            "week": r["week"],
+            "total": total,
+            "correct": correct,
+            "false_positives": r["fps"] or 0,
+            "accuracy": round(correct / max(total, 1) * 100, 1),
+        })
+
+    hours_saved = total_correct * minutes_per_alert / 60
+    labor_value = hours_saved * hourly_rate
+    ai_cost = total_count * 0.002
+
+    return jsonify({
+        "total": total_count,
+        "accuracy": round(total_correct / max(total_count, 1) * 100, 1),
+        "hours_saved": round(hours_saved, 1),
+        "labor_value_usd": round(labor_value, 2),
+        "ai_cost_usd": round(ai_cost, 4),
+        "net_value_usd": round(labor_value - ai_cost, 2),
+        "weeks": weeks,
+    })
+
+
+@app.route("/api/analytics/breakdown")
+def api_analytics_breakdown():
+    days = int(request.args.get("days", 30))
+    if not _has_feedback_table():
+        return jsonify({"rules": [], "most_problematic": None, "most_common": None})
+
+    since = (date.today() - timedelta(days=days)).isoformat()
+    rows = q(
+        """
+        SELECT rule_name,
+               COUNT(*) AS total,
+               SUM(ai_correct) AS correct,
+               SUM(CASE WHEN analyst_verdict='false_positive' THEN 1 ELSE 0 END) AS fps
+        FROM feedback
+        WHERE client_id = ? AND timestamp >= ?
+        GROUP BY rule_name ORDER BY total DESC
+        """,
+        (CLIENT_ID, since),
+    )
+    rules = []
+    for r in rows:
+        total = r["total"] or 0
+        fps = r["fps"] or 0
+        correct = r["correct"] or 0
+        rules.append({
+            "rule": r["rule_name"],
+            "total": total,
+            "correct": correct,
+            "false_positives": fps,
+            "fp_rate": round(fps / max(total, 1) * 100, 1),
+            "accuracy": round(correct / max(total, 1) * 100, 1),
+        })
+
+    most_problematic = max(rules, key=lambda x: x["fp_rate"])["rule"] if rules else None
+    most_common = max(rules, key=lambda x: x["total"])["rule"] if rules else None
+
+    return jsonify({"rules": rules, "most_problematic": most_problematic, "most_common": most_common})
+
+
+@app.route("/api/analytics/roi")
+def api_analytics_roi():
+    days = int(request.args.get("days", 30))
+    hourly_rate = float(request.args.get("hourly_rate", 75.0))
+    minutes_per_alert = float(request.args.get("minutes_per_alert", 15.0))
+    if not _has_feedback_table():
+        return jsonify({"alerts_analyzed": 0, "hours_saved": 0, "labor_value_usd": 0,
+                        "ai_cost_usd": 0, "net_roi_usd": 0, "roi_percentage": 0})
+
+    since = (date.today() - timedelta(days=days)).isoformat()
+    row = q(
+        "SELECT COUNT(*) AS total, SUM(ai_correct) AS correct FROM feedback WHERE client_id=? AND timestamp>=?",
+        (CLIENT_ID, since),
+        one=True,
+    )
+    total = (row["total"] or 0) if row else 0
+    correct = (row["correct"] or 0) if row else 0
+
+    hours_saved = correct * minutes_per_alert / 60
+    labor_value = hours_saved * hourly_rate
+    ai_cost = total * 0.002
+    net_roi = labor_value - ai_cost
+    roi_pct = (net_roi / max(ai_cost, 0.01)) * 100
+
+    return jsonify({
+        "alerts_analyzed": total,
+        "hours_saved": round(hours_saved, 1),
+        "labor_value_usd": round(labor_value, 2),
+        "ai_cost_usd": round(ai_cost, 4),
+        "net_roi_usd": round(net_roi, 2),
+        "roi_percentage": round(roi_pct, 0),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Config editor page
+# ---------------------------------------------------------------------------
+
+@app.route("/config-editor")
+def config_editor_page():
+    return render_template("config_editor.html", client_id=CLIENT_ID)
+
+
+def _config_dir() -> Path:
+    return Path(os.environ.get("ALERTTRIAGE_CONFIG_DIR", str(PROJECT_ROOT / "config")))
+
+
+@app.route("/api/config/client", methods=["GET"])
+def api_config_get():
+    import yaml
+    cfg_path = _config_dir() / "client_configs" / f"{CLIENT_ID}.yaml"
+    if not cfg_path.exists():
+        return jsonify({"error": f"No config file for client '{CLIENT_ID}'"}), 404
+    try:
+        raw = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        return jsonify({"yaml_text": cfg_path.read_text(encoding="utf-8"), "parsed": raw})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/config/client", methods=["PUT"])
+def api_config_update():
+    import yaml
+    data = request.get_json(force=True) or {}
+    yaml_text = data.get("yaml_text", "")
+    try:
+        parsed = yaml.safe_load(yaml_text)
+        if not isinstance(parsed, dict):
+            return jsonify({"error": "Config must be a YAML mapping"}), 422
+    except yaml.YAMLError as exc:
+        return jsonify({"error": f"Invalid YAML: {exc}"}), 422
+    try:
+        cfg_path = _config_dir() / "client_configs" / f"{CLIENT_ID}.yaml"
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        cfg_path.write_text(yaml_text, encoding="utf-8")
+        return jsonify({"status": "updated", "client_id": CLIENT_ID})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/config/features", methods=["GET"])
+def api_config_features():
+    import yaml
+    feat_path = _config_dir() / "features.yaml"
+    if not feat_path.exists():
+        return jsonify({})
+    try:
+        raw = yaml.safe_load(feat_path.read_text(encoding="utf-8")) or {}
+        return jsonify(raw)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/config/alert-types", methods=["GET"])
+def api_config_alert_types():
+    import yaml
+    at_path = _config_dir() / "alert_types.yaml"
+    if not at_path.exists():
+        return jsonify({})
+    try:
+        raw = yaml.safe_load(at_path.read_text(encoding="utf-8")) or {}
+        return jsonify(raw)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Webhooks management page
+# ---------------------------------------------------------------------------
+
+@app.route("/webhooks-mgmt")
+def webhooks_page():
+    return render_template("webhooks.html", client_id=CLIENT_ID)
+
+
+_VALID_EVENT_TYPES = {
+    "alert_analyzed", "feedback_recorded", "accuracy_changed",
+    "threshold_exceeded", "report_generated", "cost_limit_approaching",
+}
+
+
+def _webhooks_path() -> Path:
+    return DATA_DIR / "webhooks.json"
+
+
+def _load_webhooks() -> list:
+    p = _webhooks_path()
+    if not p.exists():
+        return []
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def _save_webhooks(webhooks: list) -> None:
+    p = _webhooks_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(webhooks, indent=2, default=str), encoding="utf-8")
+    tmp.replace(p)
+
+
+@app.route("/api/webhooks", methods=["GET"])
+def api_webhooks_list():
+    client_filter = request.args.get("client_id", CLIENT_ID)
+    webhooks = _load_webhooks()
+    return jsonify([w for w in webhooks if w.get("client_id") == client_filter])
+
+
+@app.route("/api/webhooks", methods=["POST"])
+def api_webhooks_register():
+    data = request.get_json(force=True) or {}
+    if not data.get("url"):
+        return jsonify({"error": "url is required"}), 400
+    events = data.get("events", list(_VALID_EVENT_TYPES))
+    invalid = set(events) - _VALID_EVENT_TYPES
+    if invalid:
+        return jsonify({"error": f"Invalid event types: {sorted(invalid)}"}), 422
+
+    reg = {
+        "id": str(uuid.uuid4()),
+        "client_id": data.get("client_id", CLIENT_ID),
+        "url": data["url"],
+        "events": events,
+        "secret": data.get("secret") or None,
+        "description": data.get("description", ""),
+        "active": True,
+        "consecutive_failures": 0,
+        "created_at": datetime.utcnow().isoformat(),
+        "last_success_at": None,
+        "last_failure_at": None,
+    }
+    webhooks = _load_webhooks()
+    webhooks.append(reg)
+    _save_webhooks(webhooks)
+    return jsonify(reg), 201
+
+
+@app.route("/api/webhooks/<webhook_id>", methods=["PATCH"])
+def api_webhooks_update(webhook_id: str):
+    data = request.get_json(force=True) or {}
+    webhooks = _load_webhooks()
+    for wh in webhooks:
+        if wh.get("id") == webhook_id:
+            for field in ("url", "events", "description", "active"):
+                if field in data:
+                    wh[field] = data[field]
+            _save_webhooks(webhooks)
+            return jsonify(wh)
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/api/webhooks/<webhook_id>", methods=["DELETE"])
+def api_webhooks_delete(webhook_id: str):
+    webhooks = _load_webhooks()
+    filtered = [w for w in webhooks if w.get("id") != webhook_id]
+    if len(filtered) == len(webhooks):
+        return jsonify({"error": "Not found"}), 404
+    _save_webhooks(filtered)
+    return "", 204

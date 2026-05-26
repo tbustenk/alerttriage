@@ -1,0 +1,77 @@
+# AlertTriage v2 — Per-Alert-Type Settings
+#
+# Override the global model behaviour for specific rule_name patterns.
+# Keys are exact rule names (or fnmatch-style globs: "ssh_*", "aws_*").
+#
+# These settings are read by ConfigManager.get_alert_type_settings(rule_name)
+# and can be overridden per-client in client_configs/<id>.yaml under
+# the "alert_types" key.
+
+# ── Defaults (applied when no rule-specific entry matches) ─────────────────
+_defaults:
+  confidence_threshold: 0.70    # min confidence to accept verdict
+  auto_dismiss: false           # never auto-dismiss unless feature flag enabled
+  auto_dismiss_confidence: 0.97 # threshold for auto-dismiss (feature-flag gated)
+  escalate_on_low_confidence: false
+  max_latency_ms: 5000
+  notes: ""
+
+# ── High-stakes rules — be conservative ───────────────────────────────────
+ransomware_detected:
+  confidence_threshold: 0.85
+  escalate_on_low_confidence: true
+  notes: "Critical — escalate when unsure"
+
+data_exfiltration:
+  confidence_threshold: 0.80
+  escalate_on_low_confidence: true
+
+privileged_account_abuse:
+  confidence_threshold: 0.80
+  escalate_on_low_confidence: true
+
+lateral_movement:
+  confidence_threshold: 0.75
+
+# ── High-volume, noisy rules — more aggressive auto-dismiss ────────────────
+port_scan_detected:
+  confidence_threshold: 0.60
+  auto_dismiss: false
+  notes: "Often scanners; check feedback trends before enabling auto-dismiss"
+
+failed_login:
+  confidence_threshold: 0.65
+
+ssl_certificate_error:
+  confidence_threshold: 0.55
+  auto_dismiss: false
+
+dns_lookup_suspicious:
+  confidence_threshold: 0.65
+
+# ── Cloud / infra rules ────────────────────────────────────────────────────
+aws_root_login:
+  confidence_threshold: 0.80
+  escalate_on_low_confidence: true
+
+aws_security_group_change:
+  confidence_threshold: 0.70
+
+gcp_iam_change:
+  confidence_threshold: 0.75
+
+# ── Pattern-based rules (fnmatch globs, matched in order) ─────────────────
+# These override the defaults for matching rule names.
+# More specific entries (non-glob) above take priority.
+_patterns:
+  - pattern: "brute_force_*"
+    confidence_threshold: 0.70
+
+  - pattern: "aws_*"
+    confidence_threshold: 0.72
+
+  - pattern: "gcp_*"
+    confidence_threshold: 0.72
+
+  - pattern: "azure_*"
+    confidence_threshold: 0.72

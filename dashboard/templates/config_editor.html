@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Config Editor{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Config Editor</h1>
+  <p class="subtitle">View and safely edit configuration for <strong>{{ client_id }}</strong></p>
+</div>
+
+<div id="alert-container"></div>
+
+<div class="admin-grid">
+
+  <!-- Client config YAML editor -->
+  <div class="card" style="grid-column:1/-1">
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Client Config — {{ client_id }}.yaml</span>
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-ghost" onclick="loadConfig()">&#8635; Reload</button>
+        <button class="btn btn-primary" onclick="saveConfig()">Save Config</button>
+      </div>
+    </div>
+    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.75rem">
+      Edit the YAML directly. Changes are validated before writing to disk.
+    </p>
+    <textarea id="yaml-editor" class="form-control"
+      style="font-family:monospace;min-height:320px;font-size:0.82rem;line-height:1.5;resize:vertical"
+      spellcheck="false" placeholder="Loading…"></textarea>
+  </div>
+
+  <!-- Feature flags -->
+  <div class="card">
+    <div class="card-title">Feature Flags</div>
+    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.75rem">
+      Global feature flag defaults from <code>config/features.yaml</code>.
+      Per-client overrides live in the client config above.
+    </p>
+    <div id="features-container">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
+    </div>
+  </div>
+
+  <!-- Alert type defaults -->
+  <div class="card">
+    <div class="card-title">Alert-Type Defaults</div>
+    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.75rem">
+      Global thresholds and settings from <code>config/alert_types.yaml</code>.
+    </p>
+    <div id="alert-types-container">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showAlert(msg, type='success') {
+  const el = document.getElementById('alert-container');
+  el.innerHTML = `<div class="alert alert-${type}" style="margin-bottom:1rem;padding:0.75rem 1rem;border-radius:6px;background:${type==='success'?'var(--green-dim, #1a3a2a)':'var(--red-dim, #3a1a1a)'};color:${type==='success'?'var(--green, #4ade80)':'var(--red, #f87171)'};border:1px solid currentColor">${msg}</div>`;
+  setTimeout(() => { el.innerHTML = ''; }, 4000);
+}
+
+async function loadConfig() {
+  const res = await fetch('/api/config/client').then(r => r.json()).catch(() => null);
+  if (!res || res.error) {
+    document.getElementById('yaml-editor').value = res?.error || 'Failed to load config';
+    return;
+  }
+  document.getElementById('yaml-editor').value = res.yaml_text || '';
+}
+
+async function saveConfig() {
+  const yaml_text = document.getElementById('yaml-editor').value;
+  const res = await fetch('/api/config/client', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({yaml_text}),
+  }).then(r => r.json()).catch(() => ({error: 'Network error'}));
+  if (res.error) {
+    showAlert('Error: ' + res.error, 'error');
+  } else {
+    showAlert('Config saved successfully.');
+  }
+}
+
+async function loadFeatures() {
+  const res = await fetch('/api/config/features').then(r => r.json()).catch(() => null);
+  const el = document.getElementById('features-container');
+  if (!res || typeof res !== 'object' || res.error) {
+    el.innerHTML = '<p style="color:var(--text-muted)">No features.yaml found.</p>';
+    return;
+  }
+  let html = '<div class="table-wrap"><table class="data-table"><thead><tr><th>Flag</th><th>Enabled</th><th>Description</th></tr></thead><tbody>';
+  for (const [key, val] of Object.entries(res)) {
+    if (key === '_defaults' || key === '_patterns') continue;
+    const enabled = typeof val === 'object' ? val.enabled : val;
+    const desc = typeof val === 'object' ? (val.description || '') : '';
+    const badge = enabled
+      ? '<span style="color:var(--green,#4ade80)">✓ on</span>'
+      : '<span style="color:var(--text-muted)">○ off</span>';
+    html += `<tr><td><code>${key}</code></td><td>${badge}</td><td style="font-size:0.8rem;color:var(--text-muted)">${desc}</td></tr>`;
+  }
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+async function loadAlertTypes() {
+  const res = await fetch('/api/config/alert-types').then(r => r.json()).catch(() => null);
+  const el = document.getElementById('alert-types-container');
+  if (!res || typeof res !== 'object' || res.error) {
+    el.innerHTML = '<p style="color:var(--text-muted)">No alert_types.yaml found.</p>';
+    return;
+  }
+  const defaults = res._defaults || {};
+  let html = '<div style="font-size:0.82rem">';
+  if (Object.keys(defaults).length) {
+    html += '<div style="font-weight:600;margin-bottom:0.5rem;color:var(--text-muted)">_defaults</div>';
+    html += '<div class="table-wrap"><table class="data-table" style="margin-bottom:1rem"><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>';
+    for (const [k, v] of Object.entries(defaults)) {
+      html += `<tr><td><code>${k}</code></td><td>${JSON.stringify(v)}</td></tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  const rules = Object.keys(res).filter(k => !k.startsWith('_'));
+  if (rules.length) {
+    html += `<div style="font-weight:600;margin-bottom:0.5rem;color:var(--text-muted)">${rules.length} explicit rule(s)</div>`;
+    html += '<ul style="list-style:none;padding:0;margin:0">';
+    for (const r of rules) {
+      html += `<li style="margin-bottom:0.25rem"><code>${r}</code></li>`;
+    }
+    html += '</ul>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+loadConfig();
+loadFeatures();
+loadAlertTypes();
+</script>
+{% endblock %}

@@ -228,6 +228,7 @@ class FeedbackSystem:
 
     @contextmanager
     def _conn(self) -> Generator[sqlite3.Connection, None, None]:
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(self._db_path), timeout=10.0)
         conn.row_factory = sqlite3.Row
         try:

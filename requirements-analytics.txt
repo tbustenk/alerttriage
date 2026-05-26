@@ -1,0 +1,6 @@
+# AlertTriage v2 — Analytics & reporting dependencies
+# Install alongside base: pip install -r requirements.txt -r requirements-analytics.txt
+
+fpdf2>=2.7.9           # Pure-Python PDF generation
+jinja2>=3.1.4          # Report HTML templating
+watchdog>=4.0.0        # Config file hot-reload (optional; graceful fallback if absent)

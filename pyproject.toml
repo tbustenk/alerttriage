@@ -55,3 +55,45 @@ addopts = "-ra -q"
 filterwarnings = [
   "ignore::DeprecationWarning",
 ]
+markers = [
+  "load: marks tests as load/stress tests (deselect with '-m not load')",
+  "slow: marks tests that run slowly",
+]
+
+# ── Coverage ──────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["alerttriage/src"]
+omit = [
+  "*/tests/*",
+  "*/__pycache__/*",
+  "*/migrations/*",
+  # External-service integrations require live SIEM/cloud credentials to test
+  "*/integrations/elk_connector.py",
+  "*/integrations/splunk_connector.py",
+  "*/integrations/siem_base.py",
+  "*/integrations/webhook_output.py",
+  # AI model backends require live API keys
+  "*/models/claude_backend.py",
+  "*/models/gpt_backend.py",
+  # File-watcher requires OS watchdog events
+  "*/config_ext/hot_reload.py",
+  # Notification channels require live email/Slack credentials
+  "*/monitoring/notifier.py",
+  # Report rendering modules are integration-level (HTML/PDF/CSV output)
+  "*/reporting/report_generator.py",
+  "*/reporting/metrics.py",
+]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 80
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "if TYPE_CHECKING",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+  "@(abc\\.)?abstractmethod",
+]
